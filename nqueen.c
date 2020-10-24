@@ -1,87 +1,81 @@
 /* C/C++ program to solve N Queen Problem using
 backtracking */
-#include<bits/stdc++.h>
-#define N 4
- 
-/* A utility function to print solution */
-void printSolution(int board[N][N])
+#include <sys/queue.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "list.h"
+
+// use of 1 D array to represent the board, board[i] represent col (i-1) the value of board[i] 
+// represent the y location of the Queen
+// Coordinates: 
+//    0  1  2  3  4  5
+//   ___________________
+// 0 |__|__|__|__|__|__|
+// 1 |__|__|__|__|__|__|
+// 2 |__|__|__|__|__|__|
+// 3 |__|__|__|__|__|__|
+// 4 |__|__|__|__|__|__|
+// 5 |__|__|__|__|__|__|
+
+typedef struct { 
+  int* board;
+  int  score;
+} sol_t;
+
+
+int calculate_score( int board[], size_t N )
 {
-    static int k = 1;
-    printf("%d-\n",k++);
-    for (int i = 0; i < N; i++)
-    {
-        for (int j = 0; j < N; j++)
-            printf(" %d ", board[i][j]);
-        printf("\n");
-    }
-    printf("\n");
+  int score = 0;
+  for ( size_t i = 0; i < N; i++ ) {
+    score += abs( i - board[i]);
+  }
+  return score;
 }
  
-/* A utility function to check if a queen can
-be placed on board[row][col]. Note that this
-function is called when "col" queens are
-already placed in columns from 0 to col -1.
-So we need to check only left side for
-attacking queens */
-bool isSafe(int board[N][N], int row, int col)
+// isSafe 1-D Ver
+int isSafe(int* board, int col, size_t N )
 {
-    int i, j;
- 
+    int i;
     /* Check this row on left side */
     for (i = 0; i < col; i++)
-        if (board[row][i])
-            return false;
+            //  Q on the left       |  Q on the top left                |    Q on the bot left
+        if (board[i] == board[col] || board[i] - i == board[col] - col || board[col] + col == board[i] + i )
+            return 0;
  
-    /* Check upper diagonal on left side */
-    for (i=row, j=col; i>=0 && j>=0; i--, j--)
-        if (board[i][j])
-            return false;
- 
-    /* Check lower diagonal on left side */
-    for (i=row, j=col; j>=0 && i<N; i++, j--)
-        if (board[i][j])
-            return false;
- 
-    return true;
+    return 1;
 }
  
 /* A recursive utility function to solve N
 Queen problem */
-bool solveNQUtil(int board[N][N], int col)
+int solveNQUtil(int* board, int col, size_t N, list_sol_t* solList)
 {
     /* base case: If all queens are placed
     then return true */
     if (col == N)
-    {
+    {   
+        // add sol to the solution list
         printSolution(board);
-        return true;
+        return 1;
     }
  
     /* Consider this column and try placing
     this queen in all rows one by one */
-    bool res = false;
+    int res = 0;
     for (int i = 0; i < N; i++)
     {
         /* Check if queen can be placed on
         board[i][col] */
-        if ( isSafe(board, i, col) )
+        board[col] = i;
+        if ( isSafe(board, col, N) )
         {
-            /* Place this queen in board[i][col] */
-            board[i][col] = 1;
+            res = solveNQUtil(board, col + 1, N, solList) || res;
+
+            board[col] = 0; // BACKTRACK
  
-            // Make result true if any placement
-            // is possible
-            res = solveNQUtil(board, col + 1) || res;
- 
-            /* If placing queen in board[i][col]
-            doesn't lead to a solution, then
-            remove queen from board[i][col] */
-            board[i][col] = 0; // BACKTRACK
         }
     }
- 
-    /* If queen can not be place in any row in
-        this column col then return false */
+
     return res;
 }
  
@@ -93,23 +87,36 @@ prints placement of queens in the form of 1s.
 Please note that there may be more than one
 solutions, this function prints one of the
 feasible solutions.*/
-void solveNQ()
-{
-    int board[N][N];
-    memset(board, 0, sizeof(board));
- 
-    if (solveNQUtil(board, 0) == false)
-    {
-        printf("Solution does not exist");
-        return ;
-    }
- 
-    return ;
+void solveNQ(size_t N, list_sol_t* solList)
+{   
+  int* board = (int*) malloc( N * sizeof(int) );
+
+  if (solveNQUtil(board, 0, N, solList) == 0)
+  {
+      printf("Solution does not exist");
+      return ;
+  }
+  return ;
 }
  
 // driver program to test above function
-int main()
-{
-    solveNQ();
-    return 0;
+int main( int argc, char **argv )
+{ 
+  int n,p;
+
+  if (argc != 2) {
+        printf("Usage: bksb n\nAborting...\n");
+        exit(0);
+  }
+
+  n = atoi(argv[1]);
+  p = atoi(argv[2]);
+
+  list_sol_t solList;
+  list_sol_construct( &solList );
+
+  solveNQ( n, &solList );
+
+  list_sol_destruct( &solList );
+  return 0;
 }
