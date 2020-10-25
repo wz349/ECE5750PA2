@@ -124,8 +124,8 @@ void worker( void* varg ) {
 }
 
 int main(int argc, char *argv[]){
-  struct timespec start, end;
-  double time;
+  struct timespec start, end, start1, end1;
+  double time, time1;
 	
 	char* p;
 	if (argc != 4){
@@ -137,9 +137,12 @@ int main(int argc, char *argv[]){
   DEPTH    = strtol(argv[3], &p, 10) - 1 ; 
     // DEPTH    = strtol(argv[3], &p, 10);
 
+
+  clock_gettime(CLOCK_MONOTONIC, &start1);
 	thpool = thpool_init(NTHREADS);
 	max_board = (int*) malloc( SIZE * sizeof(int) );
   int* temp_board;
+  clock_gettime(CLOCK_MONOTONIC, &end1);
   clock_gettime(CLOCK_MONOTONIC, &start);
 	for ( size_t i = 0; i<SIZE; i++) {
     // generate new board
@@ -159,6 +162,8 @@ int main(int argc, char *argv[]){
 	
 	thpool_wait(thpool);
   clock_gettime(CLOCK_MONOTONIC, &end);
+  time1 = BILLION *(end1.tv_sec - start1.tv_sec) +(end1.tv_nsec - start1.tv_nsec);
+  time1 = time1 / BILLION;
   time = BILLION *(end.tv_sec - start.tv_sec) +(end.tv_nsec - start.tv_nsec);
   time = time / BILLION;
   
@@ -170,6 +175,7 @@ int main(int argc, char *argv[]){
   }
   printf("\n");
   printf("recalculate the board's profit is %d\n ",calc_profit(max_board,SIZE));
+  printf("Elapsed setup time: %lf seconds\n", time1);
   printf("Elapsed time: %lf seconds\n", time);
   thpool_destroy(thpool);
 
