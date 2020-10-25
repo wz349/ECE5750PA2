@@ -1,122 +1,112 @@
-/* C/C++ program to solve N Queen Problem using
-backtracking */
-#include <sys/queue.h>
-#include <stddef.h>
 #include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <time.h>
 #include <stdlib.h>
-#include "list.h"
+#include "thpool.h"
+#define BILLION 1000000000L
 
-// use of 1 D array to represent the board, board[i] represent col (i-1) the value of board[i] 
-// represent the y location of the Queen
-// Coordinates: 
-//    0  1  2  3  4  5
-//   ___________________
-// 0 |__|__|__|__|__|__|
-// 1 |__|__|__|__|__|__|
-// 2 |__|__|__|__|__|__|
-// 3 |__|__|__|__|__|__|
-// 4 |__|__|__|__|__|__|
-// 5 |__|__|__|__|__|__|
+// global variable
 
-typedef struct { 
-  int* board;
-  int  score;
-} sol_t;
+int   sum = 0;
+int   tid = 0;
+int   max_val = -1;
+int*  max_board;
+int   count;
+int   NTHREADS, SIZE, DEPTH;
 
+// arguments for worker
+typedef struct {
+    int* board;
+    int  col;
+    int  DEPTH;
+} GM;
 
-int calculate_score( int board[], size_t N )
+// prototype
+void worker( void* varg ); 
+
+void update_score( int board[], size_t N )
 {
   int score = 0;
   for ( size_t i = 0; i < N; i++ ) {
     score += abs( i - board[i]);
   }
-  return score;
+  if (score > max_val) {
+    max_val = score;
+  }
+  for ( size_t i = 0; i < N; i++ ) {
+    max_board[i] = board[i];
+  }
 }
- 
-// isSafe 1-D Ver
-int isSafe(int* board, int col, size_t N )
+
+int is_safe( int* board, int col )
 {
     int i;
     /* Check this row on left side */
-    for (i = 0; i < col; i++)
+    for ( i = 0; i < col; i++ )
             //  Q on the left       |  Q on the top left                |    Q on the bot left
         if (board[i] == board[col] || board[i] - i == board[col] - col || board[col] + col == board[i] + i )
             return 0;
  
     return 1;
 }
- 
-/* A recursive utility function to solve N
-Queen problem */
-int solveNQUtil(int* board, int col, size_t N, list_sol_t* solList)
+
+// keep using the same board, generate new only for new works
+void solve( int col, int* board, int end )
 {
-    /* base case: If all queens are placed
-    then return true */
-    if (col == N)
-    {   
-        // add sol to the solution list
-        printSolution(board);
-        return 1;
-    }
- 
-    /* Consider this column and try placing
-    this queen in all rows one by one */
-    int res = 0;
-    for (int i = 0; i < N; i++)
+    int i;
+    if (col == SIZE)
     {
-        /* Check if queen can be placed on
-        board[i][col] */
-        board[col] = i;
-        if ( isSafe(board, col, N) )
-        {
-            res = solveNQUtil(board, col + 1, N, solList) || res;
-
-            board[col] = 0; // BACKTRACK
- 
-        }
+      // reach the end of board
+      count++;
+      update_score( board, SIZE );
+      return; 
     }
 
-    return res;
+    for (i = 0; i < SIZE; i++) {
+      // try place it at the row
+      board[col] = i; 
+      if ( is_safe ( board, col ) ) {
+        solve(col + 1, board, end);
+      }
+      // backtrack
+      board[col] = -1;
+    }
 }
- 
-/* This function solves the N Queen problem using
-Backtracking. It mainly uses solveNQUtil() to
-solve the problem. It returns false if queens
-cannot be placed, otherwise return true and
-prints placement of queens in the form of 1s.
-Please note that there may be more than one
-solutions, this function prints one of the
-feasible solutions.*/
-void solveNQ(size_t N, list_sol_t* solList)
-{   
-  int* board = (int*) malloc( N * sizeof(int) );
 
-  if (solveNQUtil(board, 0, N, solList) == 0)
-  {
-      printf("Solution does not exist");
-      return ;
+
+int main(int argc, char *argv[]){
+  struct timespec start, end;
+  double time;
+	
+	char* p;
+	if (argc != 2){
+		puts("This testfile needs excactly 1 arguments");
+		exit(1);
+	}
+	SIZE     = strtol(argv[1], &p, 10);
+  DEPTH    = SIZE;
+  // DEPTH    = strtol(argv[3], &p, 10);
+  max_board = (int*) malloc( SIZE * sizeof(int) );
+
+  clock_gettime(CLOCK_MONOTONIC, &start);
+	
+  int* temp_board = (int*) malloc( SIZE * sizeof(int) );
+  solve(0,temp_board,SIZE);
+
+  clock_gettime(CLOCK_MONOTONIC, &end);
+
+  time = BILLION *(end.tv_sec - start.tv_sec) +(end.tv_nsec - start.tv_nsec);
+  time = time / BILLION;
+  
+
+	printf("# of solution: %d\n", count);
+  printf("highest profit : %d with board: \n", max_val);
+  for( size_t i = 0; i < SIZE; i++ ) {
+    printf("%d ", max_board[i]);
   }
-  return ;
-}
- 
-// driver program to test above function
-int main( int argc, char **argv )
-{ 
-  int n,p;
+  printf("\n");
+  printf("Elapsed time: %lf seconds\n", time);
 
-  if (argc != 2) {
-        printf("Usage: bksb n\nAborting...\n");
-        exit(0);
-  }
-
-  n = atoi(argv[1]);
-  p = atoi(argv[2]);
-
-  list_sol_t solList;
-  list_sol_construct( &solList );
-
-  solveNQ( n, &solList );
-
-  list_sol_destruct( &solList );
-  return 0;
+	return 0;
 }
