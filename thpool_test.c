@@ -134,7 +134,7 @@ int main(int argc, char *argv[]){
 	}
 	SIZE     = strtol(argv[1], &p, 10);
 	NTHREADS = strtol(argv[2], &p, 10);
-  DEPTH    = strtol(argv[3], &p, 10);
+  DEPTH    = strtol(argv[3], &p, 10) - 1 ; 
     // DEPTH    = strtol(argv[3], &p, 10);
 
 	thpool = thpool_init(NTHREADS);
