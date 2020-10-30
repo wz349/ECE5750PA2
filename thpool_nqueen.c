@@ -1,118 +1,183 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
 #include <pthread.h>
-#include <assert.h>
+#include <unistd.h>
+#include <time.h>
+#include <stdlib.h>
+#include "thpool.h"
+#define BILLION 1000000000L
 
-int NTHREADS, SIZE;
-int ** hist = NULL;
-int * count = NULL;
+// global variable
+threadpool thpool;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+int   sum = 0;
+int   tid = 0;
+int   max_val = -1;
+int*  max_board;
+int   count;
+int   NTHREADS, SIZE, DEPTH;
 
-static void oof(void)
+// arguments for worker
+typedef struct {
+    int* board;
+    int  col;
+    int  DEPTH;
+} GM;
+
+// prototype
+void worker( void* varg ); 
+int calc_profit( int* board, size_t N)
 {
-    fprintf(stderr, "Out of memory.\n");
-    exit(1);
+  int profit = 0;
+  for ( size_t i = 0; i < N; i++ ) {
+    profit += abs( i - board[i]);
+  }
+  return profit;
 }
 
-void solve(int col, int tid)
+void update_score( int board[], size_t N )
 {
-    /* If NTHREADS does not divide SIZE, you
-     * will not cover all rows.
-     * Also make sure SIZE >= NTHREADS, otherwise start is always 0.
-     */
-    int start = (col > 0) ? 0 : tid * (SIZE/NTHREADS);
-    int end = (col > 0 || tid == NTHREADS-1) ? SIZE-1 : (tid+1) * (SIZE/NTHREADS) - 1;
-    int i, j;
+  int score = 0;
+  for ( size_t i = 0; i < N; i++ ) {
+    score += abs( i - board[i]);
+  }
+  if (score > max_val) {
+    max_val = score;
+    for ( size_t i = 0; i < N; i++ ) {
+    max_board[i] = board[i];
+    }
+  }
+}
+
+int is_safe( int* board, int col )
+{
+    int i;
+    /* Check this row on left side */
+    for ( i = 0; i < col; i++ )
+            //  Q on the left       |  Q on the top left                |    Q on the bot left
+        if (board[i] == board[col] || board[i] - i == board[col] - col || board[col] + col == board[i] + i )
+            return 0;
+ 
+    return 1;
+}
+
+// keep using the same board, generate new only for new works
+void solve( int col, int* board, int end )
+{
+    int i;
     if (col == SIZE)
     {
-        count[tid]++;
+      // reach the end of board
+      pthread_mutex_lock(&mutex);
+      count++;
+      update_score( board, SIZE );
+      pthread_mutex_unlock(&mutex);
+      
+      return; 
+    }
+    else if(col == end + 1) {
+
+      // generate work
+      int* temp_board = (int*)malloc( SIZE * sizeof(int) );
+      // copy the board
+      for ( i = 0; i < end + 1; i++) {
+        temp_board[i] = board[i];
+      }
+      GM *arg = malloc(sizeof(*arg));
+      arg->board = temp_board;
+      arg->col   = col;
+      arg->DEPTH = DEPTH;
+      
+      thpool_add_work( thpool, (void*)worker, arg);
+
+      // end
+      return;
+
+     // do nothing
     }
 
-    #define attack(i, j) (hist[tid][j] == i || abs(hist[tid][j] - i) == col - j)
-    for (i = start; i <= end; i++) {
-        for (j = 0; j < col && !attack(i, j); j++);
-        if (j < col) continue;
-
-        hist[tid][col] = i;
-        solve(col + 1, tid);
+    for (i = 0; i < SIZE; i++) {
+      // try place it at the row
+      board[col] = i; 
+      if ( is_safe ( board, col ) ) {
+        solve(col + 1, board, end);
+      }
+      // backtrack
+      board[col] = -1;
     }
 }
 
-void *worker(void *arg)
-{
-    int tid = (int)arg;
-    count[tid] = 0;
-    solve(0, tid);
+void worker( void* varg ) {
+  GM* arg    = varg;
+  int* board = arg->board;
+  int col    = arg->col;
+  int end    = col + arg->DEPTH;
+  /*
+  printf("a worker is assigned with board: ");
+  for ( size_t i = 0; i < col; i++) {
+    printf("%d ", board[i]);
+  }
+  printf(" to go to %d col \n",end);
+  */
+  solve(col, board, end);
+  free(arg);
+  free(board);
 }
 
-
-int main(int argc, char* argv[])
-{
-    pthread_t* threads;
-    int rc, i, j, sum;
-
-    // checking whether user has provided the needed arguments
-    if(argc != 3)
-    {
-        printf("Usage: %s <number_of_queens> <number_of_threads>\n", argv[0]);
-        exit(1);
-    }
-
-
-    // passing the provided arguments to the SIZE and NTHREADS 
-    // variable, initializing matrices, and allocating space 
-    // for the threads
-    SIZE = atoi(argv[1]);
-    NTHREADS = atoi(argv[2]);
-    threads = (pthread_t*)malloc(NTHREADS * sizeof(pthread_t));
-    hist = malloc(SIZE * sizeof(int*));
-    count = malloc(SIZE * sizeof(int));
-    if (hist == NULL || count == NULL) oof();
-    for (i = 0; i < SIZE; i++)
-    {
-        hist[i] = malloc(SIZE * sizeof(int));
-        if (hist[i] == NULL) oof();
-        for (j = 0; j < SIZE; j++)
-        {
-            hist[i][j] = 0;
-        }
-    }
-
-    // declaring the needed variables for calculating the running time
-    struct timespec begin, end;
-    double time_spent;
-
-    // starting the run time
-    clock_gettime(CLOCK_MONOTONIC, &begin);
-
-    for(i = 0; i < NTHREADS; i++) {
-        rc = pthread_create(&threads[i], NULL, worker, (void *)i);
-        assert(rc == 0); // checking whether thread creation was successful
-    }
-
-    sum = 0;
-    for(i = 0; i < NTHREADS; i++) {
-        rc = pthread_join(threads[i], NULL);
-        assert(rc == 0); // checking whether thread join was successful
-        sum += count[i];
-    }
+int main(int argc, char *argv[]){
+  struct timespec start, end, start1, end1;
+  double time, time1;
+	
+	char* p;
+	if (argc != 4){
+		puts("This testfile needs excactly 3 arguments");
+		exit(1);
+	}
+	SIZE     = strtol(argv[1], &p, 10);
+	NTHREADS = strtol(argv[2], &p, 10);
+  DEPTH    = strtol(argv[3], &p, 10) - 1 ; 
+    // DEPTH    = strtol(argv[3], &p, 10);
 
 
-    // ending the run time
-    clock_gettime(CLOCK_MONOTONIC, &end);
+  clock_gettime(CLOCK_MONOTONIC, &start1);
+	thpool = thpool_init(NTHREADS);
+	max_board = (int*) malloc( SIZE * sizeof(int) );
+  int* temp_board;
+  clock_gettime(CLOCK_MONOTONIC, &end1);
+  clock_gettime(CLOCK_MONOTONIC, &start);
+	for ( size_t i = 0; i<SIZE; i++) {
+    // generate new board
+		temp_board = (int*) malloc( SIZE * sizeof(int) );
+    // place on ith row
+    temp_board[0] = i; 
+    // generate args
+    GM *arg = malloc(sizeof(*arg));
+    // where to free the board?
+    arg->board = temp_board;
+    arg->col   = 1;
+    arg->DEPTH = DEPTH;
 
-    // calculating time spent during the calculation and printing it
-    time_spent = end.tv_sec - begin.tv_sec;
-    time_spent += (end.tv_nsec - begin.tv_nsec) / 1000000000.0;
-    printf("Elapsed time: %.2lf seconds.\n", time_spent);
+    thpool_add_work( thpool, (void*)worker, arg);
+    
+	}
+	
+	thpool_wait(thpool);
+  clock_gettime(CLOCK_MONOTONIC, &end);
+  time1 = BILLION *(end1.tv_sec - start1.tv_sec) +(end1.tv_nsec - start1.tv_nsec);
+  time1 = time1 / BILLION;
+  time = BILLION *(end.tv_sec - start.tv_sec) +(end.tv_nsec - start.tv_nsec);
+  time = time / BILLION;
+  
 
-    printf("\nNumber of solutions: %d\n", sum);
+	printf("# of solution: %d\n", count);
+  printf("highest profit : %d with board: \n", max_val);
+  for( size_t i = 0; i < SIZE; i++ ) {
+    printf("%d ", max_board[i]);
+  }
+  printf("\n");
+  printf("recalculate the board's profit is %d\n ",calc_profit(max_board,SIZE));
+  printf("Elapsed setup time: %lf seconds\n", time1);
+  printf("Elapsed time: %lf seconds\n", time);
+  thpool_destroy(thpool);
 
-    for (i = 0; i < SIZE; i++)
-    {
-        free(hist[i]);
-    }
-    free(hist); free(count);
-    return 0;
-
+	return 0;
 }
